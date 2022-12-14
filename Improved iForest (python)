@@ -1,0 +1,135 @@
+from cv2 import randn
+import open3d as o3d
+import numpy as np
+import scipy
+import math
+import pandas as pd
+from scipy.stats import boxcox  
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.stats.stats import MannwhitneyuResult
+import sklearn
+from sklearn.decomposition import PCA
+from sklearn.ensemble import IsolationForest
+from sklearn.cluster import Birch, MeanShift, estimate_bandwidth
+from sklearn.metrics.pairwise import manhattan_distances
+from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+
+font = {'family' : 'Times New Roman',
+'weight' : 'normal',
+'size'   : 18,
+}
+
+points = o3d.io.read_point_cloud('D:/Desktop/基于改进的iForest算法的街道树干自适应提取与优化方法/基于神经网络、BIRCH聚类和隔离森林的单木点云离群点去除法/Pairs_tree_test/trunk_pairs_1.pcd')  
+# print(points)
+points = np.asarray(points.points)
+
+# points = np.loadtxt('./data_18.txt')
+
+x = (points[:, 0]).reshape(-1, 1)
+y = (points[:, 1]).reshape(-1, 1)
+z = (points[:, 2]).reshape(-1, 1)
+# x = (points[:, 0]).reshape(-1, 1)
+# y = (points[:, 1]).reshape(-1, 1)
+# z = (points[:, 2]).reshape(-1, 1)
+
+data = np.concatenate((x, y, z), axis=1)
+
+brc = Birch(n_clusters=None, threshold=0.02, compute_labels=True).fit(data)
+labels = np.asarray(brc.labels_).reshape(-1, 1)
+data_ = np.concatenate((data, labels), axis=1)
+
+# np.savetxt('F:/Pairs_tree_test/data_trunk_pairs_2_BIRCH.txt', data_)
+
+centroids = brc.subcluster_centers_
+# np.savetxt('F:/centroids4.txt', centroids)
+bandwidth = estimate_bandwidth(centroids[:, :2], quantile=0.1, n_samples=data.shape[0], random_state=0)
+ms = MeanShift(bandwidth = bandwidth, bin_seeding = True)
+ms.fit(centroids[:, :2])
+label = ms.labels_
+aliened_centroid = ms.cluster_centers_[0]
+# aliened_centroid = np.mean(centroids, axis=0)
+
+# ax1 = plt.subplot(111)
+# ax1.scatter(centroids[:, 0], centroids[:, 1], s=1)
+# ax1.scatter(aliened_centroid[0], aliened_centroid[1], s=20, c='r')
+# plt.xticks(fontproperties = 'Times New Roman', size = 15)
+# plt.yticks(fontproperties = 'Times New Roman', size = 15)
+# xmajorFormatter = FormatStrFormatter('%.1f')
+# ax1.yaxis.set_major_formatter(xmajorFormatter)
+# labelss = plt.legend(['centroid', 'maximum neighbor density point'], loc=3, prop={'family' : 'Times New Roman', 'size'   : 16}).get_texts()
+# plt.show()
+
+Manhattan_distance = list()
+for i in range(0, len(brc.subcluster_labels_)):
+    centroid = centroids[i]
+    # Manhattan_distance.append(np.linalg.norm(aliened_centroid[: 2] - centroid[: 2], ord=1))
+    Manhattan_distance.append(np.sqrt(np.sum((aliened_centroid[: 2] - centroid[: 2])**2)))
+
+
+# df = pd.DataFrame(centroids, columns =['value'])
+# u = df['value'].mean()  # 计算均值
+# std = df['value'].std() 
+# # print(scipy.stats.kstest(df['value'], 'norm', (u, std)))
+# print(u, std)
+
+# plt.figure(figsize=(8, 6))
+# ax = plt.subplot(111)
+# a, b, c  = ax.hist(Manhattan_distance, bins=40, histtype='bar', rwidth=0.85)
+# ax.scatter(b[8], a[8], s=50, c='r')
+# ax.plot(b[:40], a)
+# plt.xlabel('Euclidean distance', font)
+# plt.ylabel('Points', font)
+# plt.xticks(fontproperties = 'Times New Roman', size = 15)
+# plt.yticks(fontproperties = 'Times New Roman', size = 15)
+# xmajorFormatter = FormatStrFormatter('%.2f')
+# ax.xaxis.set_major_formatter(xmajorFormatter)
+# labelss = plt.legend(['broken line', 'separation point', 'points'], loc=1, prop={'family' : 'Times New Roman', 'size'   : 16}).get_texts()
+# [label.set_fontname('Times New Roman') for label in labelss]
+# plt.show()
+# print(a, b, c)
+# print(sum(a[:6]) / sum(a))
+
+# plt.title("Manhattan_distance")
+# plt.violinplot(Manhattan_distance, vert=False)
+# plt.show()
+
+iso_f = IsolationForest(n_estimators=centroids.shape[0], contamination=0.35, random_state=0).fit(centroids[:, 0:2])
+labels = iso_f.predict(centroids[:, 0:2])
+# print(Manhattan_distance)
+# fig = plt.figure()
+# ax1 = fig.gca(projection='3d')
+# ax1.scatter(Manhattan_distance, centroids[:, 1], centroids[:, 0], s=1)
+# # ax1.scatter(aliened_centroid[0], aliened_centroid[1], aliened_centroid[2], c='r', s=20)
+# plt.show()
+# print(centroids.shape)
+index = np.where(labels == -1)
+
+# final_check = list()
+# for i in index:
+#     final_check.append(Manhattan_distance[i])
+    
+# final_check = np.asarray(final_check).reshape(-1, 1)
+
+# iso_f_check = IsolationForest(n_estimators=final_check.shape[0], random_state=0).fit(final_check)
+# final_check_labels = iso_f_check.predict(final_check)
+
+# final_check_index = np.where(final_check_labels == -1)
+
+# abnormal_value_index = list()
+# for abnormal_value in final_check[final_check_index]:
+#     abnormal_value_index.append(np.where(Manhattan_distance.reshape(-1) == abnormal_value))
+
+# # abnormal_value_labels = (np.asarray(abnormal_value_index).reshape(-1) + 1)   
+abnormal_value_labels = (np.asarray(index).reshape(-1))
+
+# print(abnormal_value_labels)
+error_index = list()
+for i in range(data_.shape[0]):
+    if data_[i][3] in abnormal_value_labels:
+        error_index.append(i)
+
+data_ = np.delete(data_, obj=error_index, axis=0)
+
+np.savetxt('D:/Desktop/c_iFO.txt', data_)
+
